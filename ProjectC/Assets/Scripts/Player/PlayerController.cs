@@ -1,0 +1,103 @@
+﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PlayerController : MonoBehaviour
+{
+    [SerializeField] private LayerMask platformLayerMask;
+    private Rigidbody2D rigid;
+    private Transform trans;
+    private Collider2D hitbox;
+    private SpriteRenderer playerSprite;
+    public float runSpeed;
+    public bool isGrounded;
+
+    public float coyoteBuffer;
+    private float coyoteBufferLeft;
+
+    public float jumpPower;
+    public float jumpBuffer;
+    private float jumpBufferLeft;
+
+    public Transform cameraTarget;
+    public float camTargetDistance, camTargetSpeed;
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        rigid = this.GetComponent<Rigidbody2D>();
+        trans = this.GetComponent<Transform>();
+        hitbox = this.GetComponent<Collider2D>();
+        playerSprite = this.GetComponent<SpriteRenderer>();
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        // Horizontal Movement
+        if(Input.GetAxisRaw("Horizontal") != 0)
+        {
+            rigid.velocity = new Vector2(runSpeed * Input.GetAxisRaw("Horizontal"), rigid.velocity.y);
+        }else
+        {
+            rigid.velocity = new Vector2(0, rigid.velocity.y);
+        }
+        
+        // Flip sprite according to movement
+        if(Input.GetAxisRaw("Horizontal") > 0)
+        {
+            playerSprite.flipX = false;
+        }
+        if(Input.GetAxisRaw("Horizontal") < 0)
+        {
+            playerSprite.flipX = true;
+        }
+        isGrounded = IsGrounded() && rigid.velocity.y <=0;
+
+        if(isGrounded)
+            coyoteBufferLeft = coyoteBuffer;
+        else
+            coyoteBufferLeft-= Time.deltaTime;
+
+        // Attempted Jump, Buffers for jumpBuffer seconds
+        if(Input.GetButtonDown("Jump"))
+            jumpBufferLeft = jumpBuffer;
+        else
+            jumpBufferLeft -= Time.deltaTime;
+
+        // Vertical Movement
+        if(jumpBufferLeft > 0 && coyoteBufferLeft > 0)
+        {
+            rigid.velocity = new Vector2(rigid.velocity.x, jumpPower);
+            jumpBufferLeft = 0;
+            coyoteBufferLeft = 0;
+        }
+        // Short Jump
+        if(Input.GetButtonUp("Jump") && rigid.velocity.y > 0)
+        {
+            rigid.velocity = new Vector2(rigid.velocity.x, rigid.velocity.y*0.75f);
+        }
+
+        // Camera
+        if(Input.GetAxisRaw("Horizontal") != 0)
+        {
+            cameraTarget.localPosition = new Vector3(
+                Mathf.Lerp(cameraTarget.localPosition.x, camTargetDistance*Input.GetAxisRaw("Horizontal"), camTargetSpeed*Time.deltaTime),
+                cameraTarget.localPosition.y, cameraTarget.localPosition.z);
+        }
+
+    }
+
+    private bool IsGrounded()
+    {
+        Collider2D rayIntersect = Physics2D.BoxCast(hitbox.bounds.center, new Vector2(hitbox.bounds.size.x*0.9f, hitbox.bounds.size.y),
+        0f, Vector2.down, 0.15f, platformLayerMask).collider; 
+        //Physics2D.Raycast(hitbox.bounds.center, Vector2.down, 
+        //    hitbox.bounds.extents.y+0.1f, platformLayerMask).collider;
+        bool grounded =  rayIntersect != null;
+        Color rayColor = Color.red;
+        Debug.DrawRay(hitbox.bounds.center, Vector2.down * (hitbox.bounds.extents.y+0.1f), rayColor);
+        Debug.Log("Grounded: " + grounded);
+        return grounded;
+    }
+}
