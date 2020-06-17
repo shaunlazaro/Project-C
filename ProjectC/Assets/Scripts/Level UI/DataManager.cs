@@ -50,7 +50,14 @@ public class DataManager : MonoBehaviour
     {
         graphics = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
         maxHP = desiredMaxHPTemp;
-        HP = maxHP;
+        hp = maxHP;
+        StartCoroutine(UpdateHPInASec());
+    }
+
+    private IEnumerator UpdateHPInASec()
+    {
+        yield return new WaitForSeconds(1f);
+        HP = hp;
     }
 
 }
