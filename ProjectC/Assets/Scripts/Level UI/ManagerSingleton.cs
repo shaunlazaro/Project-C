@@ -6,7 +6,7 @@ public class ManagerSingleton : MonoBehaviour
 {
     public static ManagerSingleton Instance {get;private set;}
 
-    public  DataManager data;
+    public DataManager data;
 
     private void Awake()
     {
@@ -19,10 +19,10 @@ public class ManagerSingleton : MonoBehaviour
         {
             Destroy(this.gameObject);
         }
+        data = gameObject.GetComponent<DataManager>();
     }
     
     public void Start()
     {
-        data = this.gameObject.GetComponent<DataManager>();
     }
 }

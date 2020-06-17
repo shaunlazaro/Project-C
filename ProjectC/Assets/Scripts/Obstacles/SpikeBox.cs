@@ -6,6 +6,8 @@ public class SpikeBox : MonoBehaviour
 {
     public float damage;
     public float hitStun;
+
+    public bool hardSpike;
     // Start is called before the first frame update
     void Start()
     {
@@ -23,7 +25,11 @@ public class SpikeBox : MonoBehaviour
         if(toucher.gameObject.name == "Player")
         {
             Debug.Log("You've touched a spike!");
-            toucher.gameObject.GetComponent<PlayerController>().GetHit(damage,hitStun);
+            toucher.gameObject.GetComponent<PlayerController>().GetHit(damage,hitStun, !hardSpike);
+            if(hardSpike)
+            {
+                ManagerSingleton.Instance.data.RespawnPlayer();
+            }
         }
     }
 
