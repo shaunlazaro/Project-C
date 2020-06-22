@@ -21,6 +21,8 @@ public class PlayerController : MonoBehaviour
     public float doubleJumpPower;
     public float jumpBuffer;
     private float jumpBufferLeft;
+    public float releaseJumpBuffer;
+    private float releaseJumpBufferLeft;
     public float jumpFallingBoost;
     public float fallSpeedCap;
 
@@ -30,6 +32,14 @@ public class PlayerController : MonoBehaviour
     public float dashTime;
     private float dashTimeLeft;
     private float originalGravityScale;
+    public float dashBuffer;
+    private float dashBufferLeft;
+    public float dashCooldown;
+    private float DashCooldown
+    {
+        get{return dashCooldown + dashTime;}
+    }
+    private float dashCooldownLeft;
 
     private bool airDashAllowed = false;
     private bool doubleJumpAllowed = false;
@@ -46,6 +56,8 @@ public class PlayerController : MonoBehaviour
     public float wallJumpStun;
     private float wallJumpStunLeft = 0;
     public float timeBeforeGrappleWallAgain;
+    public float wallCoyoteBuffer;
+    private float wallCoyoteBufferLeft;
 
     /*public Transform cameraTarget;
     public float camTargetDistance, camTargetSpeed;*/
@@ -81,6 +93,18 @@ public class PlayerController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        
+        CheckBuffers();
+        CheckSurroundings();
+        // Reset Air Dash, Double Jump, Wall Jump
+        if(isGrounded)
+        {
+            airDashAllowed = true;
+            doubleJumpAllowed = true;
+            timeSinceGroundedJump = 0;
+            wallJumpsUsed = 0;
+        }        
+
         // Movement: Only happens if player isnt in hitstun
         if (hitstunTime > 0)
         {
@@ -98,6 +122,7 @@ public class PlayerController : MonoBehaviour
             {
                 dashTimeLeft -= Time.deltaTime;
             }
+            /*
             else if (wallJumpStunLeft > 0)
             {
                 wallJumpStunLeft -= Time.deltaTime;
@@ -127,42 +152,54 @@ public class PlayerController : MonoBehaviour
                         doubleJumpAllowed = false;                        
                     }
                 }
-            }
+            }*/
             else
             {
-                // Check if grounded before anything else!
-                isGrounded = (IsGrounded() && rigid.velocity.y <= 0.1);
-                isSlidingDownWall = IsTouchingWall() && !isGrounded && rigid.velocity.y < 0;
-
                 #region Movement
                 rigid.gravityScale = originalGravityScale;
                 
-                // Walking
-                if (Input.GetAxisRaw("Horizontal") != 0)
+                // Only walking is disabled by walljumpStun.
+                if(wallJumpStunLeft > 0)
                 {
-                    rigid.velocity = new Vector2(runSpeed * Input.GetAxisRaw("Horizontal"), rigid.velocity.y);
+                    wallJumpStunLeft -= Time.deltaTime;
                 }
+                //Walking
                 else
                 {
-                    rigid.velocity = new Vector2(0, rigid.velocity.y);
-                }
-                // Flip sprite accordingly
-                if (Input.GetAxisRaw("Horizontal") != 0)
-                {
-                    trans.localScale = new Vector3(Input.GetAxisRaw("Horizontal"), 1, 1);
-                    if (Input.GetAxisRaw("Horizontal") < 0.1)
-                        facingRight = false;
+                    if (Input.GetAxisRaw("Horizontal") != 0)
+                    {
+                        rigid.velocity = new Vector2(runSpeed * Input.GetAxisRaw("Horizontal"), rigid.velocity.y);
+                    }
                     else
-                        facingRight = true;
-                }
+                    {
+                        rigid.velocity = new Vector2(0, rigid.velocity.y);
+                    }
+                    // Flip sprite accordingly
+                    if (Input.GetAxisRaw("Horizontal") != 0)
+                    {
+                        trans.localScale = new Vector3(Input.GetAxisRaw("Horizontal"), 1, 1);
+                        if (Input.GetAxisRaw("Horizontal") < 0.1)
+                            facingRight = false;
+                        else
+                            facingRight = true;
+                    }
+                } // Everything past this is unaffected by walljumpstun.
+                
                 // Dashing
-                if (Input.GetButtonDown("Dash") && (airDashAllowed || isGrounded) && unlocks.DashUnlocked)
+                if(dashCooldownLeft > 0)
                 {
+                    dashCooldownLeft -= Time.deltaTime;
+                }
+                else if (dashBufferLeft > 0 && (airDashAllowed || isGrounded) && unlocks.DashUnlocked)
+                {
+                    dashCooldownLeft = dashCooldown;
                     if(!isGrounded)
                         airDashAllowed = false;
                     
                     rigid.gravityScale = 0;
                     dashTimeLeft = dashTime;
+
+                    // TODO: make dashing off walls look correct.
                     if(IsTouchingWall())
                     {
                         if (facingRight)
@@ -193,15 +230,8 @@ public class PlayerController : MonoBehaviour
 
                 #region Vertical Movement
                 
-                // Reset Air Dash, Double Jump, Wall Jump
-                if(isGrounded)
-                {
-                    airDashAllowed = true;
-                    doubleJumpAllowed = true;
-                    timeSinceGroundedJump = 0;
-                    wallJumpsUsed = 0;
-                }
-                else{
+                // Used to enforce a minimum time before you can cut vertical velocity by releasing jump button.
+                if(!isGrounded){
                     timeSinceGroundedJump += Time.deltaTime;
                 }
                 // Coyote time, part of jump check
@@ -209,12 +239,6 @@ public class PlayerController : MonoBehaviour
                     coyoteBufferLeft = coyoteBuffer;
                 else
                     coyoteBufferLeft -= Time.deltaTime;
-
-                // Attempted Jump, Stores input in buffer
-                if (Input.GetButtonDown("Jump"))
-                    jumpBufferLeft = jumpBuffer;
-                else
-                    jumpBufferLeft -= Time.deltaTime;
 
                 // If coyote buffer is still left, then the player is considered to be on the ground.
                 if (jumpBufferLeft > 0 && coyoteBufferLeft > 0)
@@ -225,24 +249,25 @@ public class PlayerController : MonoBehaviour
                 }
 
                 // Short hop, but only when rising and only on the first hop, not the second.
-                if (Input.GetButtonUp("Jump") && rigid.velocity.y > 0 && doubleJumpAllowed)
+                if (releaseJumpBufferLeft > 0 && rigid.velocity.y > 0 && doubleJumpAllowed && wallJumpsUsed == 0)
                 {
                     if(timeSinceGroundedJump < minimumJumpTimeBeforeFastFallAllowed)
                         StartCoroutine(WaitThenShortenJump(minimumJumpTimeBeforeFastFallAllowed - timeSinceGroundedJump));
                     else
-                        rigid.velocity = new Vector2(rigid.velocity.x, rigid.velocity.y * 0.1f);
+                        rigid.velocity = new Vector2(rigid.velocity.x, rigid.velocity.y * 0.2f);
                 }
 
                 // Double Jump
                 if(jumpBufferLeft > 0 && !isGrounded && unlocks.DoubleJumpUnlocked && doubleJumpAllowed && 
-                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed))
+                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed || wallCoyoteBufferLeft <= 0))
                 {
                     rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
                     doubleJumpAllowed = false;
                     jumpBufferLeft = 0;
                 }
                 // Wall Jump
-                else if(jumpBufferLeft > 0 && !isGrounded && unlocks.WallJumpUnlocked && wallJumpsUsed < numberOfWallJumpsAllowed &&IsTouchingWall())
+                else if(jumpBufferLeft > 0 && !isGrounded && unlocks.WallJumpUnlocked 
+                    && wallJumpsUsed < numberOfWallJumpsAllowed && (IsTouchingWall() || wallCoyoteBufferLeft > 0))
                 {
                     jumpBufferLeft = 0;
                     wallJumpStunLeft = wallJumpStun;
@@ -267,8 +292,9 @@ public class PlayerController : MonoBehaviour
 
 
 
-                // Limit vertical speed if clinging to wall
-                if(isSlidingDownWall && rigid.velocity.y < wallSlideSpeed) rigid.velocity = new Vector2(rigid.velocity.x, wallSlideSpeed);
+                // Limit vertical speed if clinging to wall.  Wall coyote buffer is not used for this one.
+                if(isSlidingDownWall && rigid.velocity.y < wallSlideSpeed) 
+                    rigid.velocity = new Vector2(rigid.velocity.x, wallSlideSpeed);
                 #endregion
 
                 #region Attacks
@@ -312,6 +338,37 @@ public class PlayerController : MonoBehaviour
         #endregion
 
     }
+
+    public void CheckBuffers()
+    {
+        // Attempted Jump, Stores input in buffer
+        if (Input.GetButtonDown("Jump"))
+            jumpBufferLeft = jumpBuffer;
+        else
+            jumpBufferLeft -= Time.deltaTime;
+        if(Input.GetButtonUp("Jump"))
+            releaseJumpBufferLeft = releaseJumpBuffer;
+        else
+            releaseJumpBufferLeft -=  Time.deltaTime;
+        if(Input.GetButtonDown("Dash"))
+            dashBufferLeft = dashBuffer;
+        else
+            dashBufferLeft -= Time.deltaTime;
+        
+    }
+
+    public void CheckSurroundings()
+    {
+
+        // Check if grounded before anything else!
+        isGrounded = (IsGrounded() && rigid.velocity.y <= 0.1);
+        isSlidingDownWall = IsTouchingWall() && !isGrounded && rigid.velocity.y < 0;
+        if(IsTouchingWall())
+            wallCoyoteBufferLeft = wallCoyoteBuffer;
+        else
+            wallCoyoteBufferLeft -= Time.deltaTime;
+    }
+
 
     // Used to force a minimum amount of time before short hop is activated.
     public IEnumerator WaitThenShortenJump(float timeRequired)
@@ -357,14 +414,14 @@ public class PlayerController : MonoBehaviour
 
         if(facingRight)
         {
-            rayIntersect = Physics2D.BoxCast(hitbox.bounds.center, new Vector2(hitbox.bounds.size.x, hitbox.bounds.size.y),
-                0f, Vector2.right, 0.05f, platformLayerMask).collider; 
+            rayIntersect = Physics2D.BoxCast(hitbox.bounds.center, new Vector2(hitbox.bounds.size.x, hitbox.bounds.size.y * 0.9f),
+                0f, Vector2.right, 0.1f, platformLayerMask).collider; 
             Debug.DrawRay(hitbox.bounds.center, Vector2.right * (hitbox.bounds.extents.x+0.05f), rayColor);
         }
         else
         {
-            rayIntersect = Physics2D.BoxCast(hitbox.bounds.center, new Vector2(hitbox.bounds.size.x, hitbox.bounds.size.y),
-                0f, Vector2.left, 0.05f, platformLayerMask).collider; 
+            rayIntersect = Physics2D.BoxCast(hitbox.bounds.center, new Vector2(hitbox.bounds.size.x, hitbox.bounds.size.y * 0.9f),
+                0f, Vector2.left, 0.1f, platformLayerMask).collider; 
             Debug.DrawRay(hitbox.bounds.center, Vector2.left * (hitbox.bounds.extents.x+0.05f), rayColor);
         }
         bool grounded =  rayIntersect != null;

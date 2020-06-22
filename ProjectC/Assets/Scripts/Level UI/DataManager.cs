@@ -56,7 +56,7 @@ public class DataManager : MonoBehaviour
 
     private IEnumerator UpdateHPInASec()
     {
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForEndOfFrame();
         HP = hp;
     }
 
