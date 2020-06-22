@@ -116,6 +116,17 @@ public class PlayerController : MonoBehaviour
                         trans.localScale = new Vector3(trans.localScale.x*-1, trans.localScale.y, trans.localScale.z);
                     }
                 }
+                // Minimum time passed, + not touching wall OR no wall jumps left
+                else if(wallJumpStun - wallJumpStunLeft > timeBeforeGrappleWallAgain && 
+                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed))
+                {
+                    //Allow early double jump.
+                    if(Input.GetButtonDown("Jump"))
+                    {
+                        rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
+                        doubleJumpAllowed = false;                        
+                    }
+                }
             }
             else
             {
@@ -223,7 +234,8 @@ public class PlayerController : MonoBehaviour
                 }
 
                 // Double Jump
-                if(jumpBufferLeft > 0 && !isGrounded && unlocks.DoubleJumpUnlocked && doubleJumpAllowed && !IsTouchingWall())
+                if(jumpBufferLeft > 0 && !isGrounded && unlocks.DoubleJumpUnlocked && doubleJumpAllowed && 
+                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed))
                 {
                     rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
                     doubleJumpAllowed = false;
