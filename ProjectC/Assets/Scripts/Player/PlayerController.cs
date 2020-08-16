@@ -65,12 +65,14 @@ public class PlayerController : MonoBehaviour
     public float bombVelocityX,bombVelocityY;
     public GameObject bombPrefab,bombDropPosition;
 
+    public float swordDamage,swordSwingStun,swordSwingDuration;
+    public GameObject swordSwingPrefab, swordSwingPosition;
+
     private DataManager data;
     private UnlockManager unlocks;
     public float hitstunTime;
     public float knockBackForce;
     public bool facingRight;
-
 
     // Start is called before the first frame update
     void Start()
@@ -308,6 +310,13 @@ public class PlayerController : MonoBehaviour
                         Physics2D.IgnoreCollision(hitbox, bombDropped.GetComponent<Collider2D>());
                         bombDropped.GetComponent<Rigidbody2D>().velocity = new Vector2(bombVelocityX * transform.localScale.x, bombVelocityY);
                     }
+                    else
+                    {
+                        Debug.Log("Sword Attack Attempted");
+                        GameObject swordSwing = Instantiate(swordSwingPrefab, swordSwingPosition.transform.position, Quaternion.identity);
+                        swordSwing.GetComponent<Rigidbody2D>().velocity = new Vector2 (1,0);
+                        StartCoroutine(KillSword(swordSwing));
+                    }
                 }
                 #endregion
             }
@@ -318,6 +327,12 @@ public class PlayerController : MonoBehaviour
             anim.SetFloat("Walking", Mathf.Abs(Input.GetAxisRaw("Horizontal")));
             #endregion
 
+        }
+
+        IEnumerator KillSword (GameObject swordSwing)
+        {
+            yield return new WaitForSeconds(1);
+            Destroy(swordSwing);
         }
 
         #region OldCamCode

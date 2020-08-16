@@ -10,7 +10,10 @@ public class BoundaryManager : MonoBehaviour
     private Transform player;
     private GameObject boundary; // the child boundary - only one will ever be toggled on, and the camera follows it 
 
+    public GameObject[] enemies;
+
     
+
     void Start()
     {
         managerBox = this.GetComponent<BoxCollider2D>();
