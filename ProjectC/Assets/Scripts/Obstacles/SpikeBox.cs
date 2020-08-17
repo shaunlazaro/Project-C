@@ -20,15 +20,17 @@ public class SpikeBox : MonoBehaviour
         
     }
 
-    void OnTriggerEnter2D(Collider2D toucher)
+    void OnTriggerStay2D(Collider2D toucher)
     {
         if(toucher.gameObject.name == "Player")
         {
-            Debug.Log("You've touched a spike!");
-            toucher.gameObject.GetComponent<PlayerController>().GetHit(damage,hitStun, !hardSpike);
-            if(hardSpike)
+            if(!toucher.gameObject.GetComponent<PlayerController>().Invulnerable)
             {
-                ManagerSingleton.Instance.data.RespawnPlayer();
+                toucher.gameObject.GetComponent<PlayerController>().GetHit(damage,hitStun, !hardSpike);
+                if(hardSpike)
+                {
+                    ManagerSingleton.Instance.data.RespawnPlayer();
+                }
             }
         }
     }

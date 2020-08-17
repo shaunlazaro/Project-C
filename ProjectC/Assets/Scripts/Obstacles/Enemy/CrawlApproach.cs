@@ -19,6 +19,9 @@ public class CrawlApproach : MonoBehaviour
     public float jumpCooldown;
     public float jumpStun; // Amount of time to pause after jumping.
     private float jumpCooldownLeft;
+    public float minimumJumpDistanceX; //Prevents enemies from lunging when you're very close.
+
+
     // Start is called before the first frame update
     void Start()
     {
@@ -31,36 +34,41 @@ public class CrawlApproach : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        //Jump
-        if(jumpCooldownLeft > 0)
+        if(controller.canAct)
         {
-            jumpCooldownLeft -=Time.deltaTime;
-        }
-        else if(Vector2.Distance(transform.position, playerTransform.position) < jumpDistance)
-        {
-            rigid.velocity = new Vector2(rigid.velocity.x, jumpThrustY);
-            jumpCooldownLeft = jumpCooldown;
-            jumpThrustX = jumpThrustXBase * horizontalDirectionModifier();
+            //Jump
+            if(jumpCooldownLeft > 0)
+            {
+                jumpCooldownLeft -=Time.deltaTime;
+            }
+            else if(Vector2.Distance(transform.position, playerTransform.position) < jumpDistance
+            && Mathf.Abs(transform.position.x - playerTransform.position.x) > minimumJumpDistanceX)
+            {
+                rigid.velocity = new Vector2(rigid.velocity.x, jumpThrustY);
+                jumpCooldownLeft = jumpCooldown;
+                jumpThrustX = jumpThrustXBase * horizontalDirectionModifier();
 
-            controller.cannotActTimeLeft = jumpStun;
+                controller.cannotActTimeLeft = jumpStun;
+            }
+            if(System.Math.Round(rigid.velocity.y,2) != 0)
+            {
+                rigid.velocity = new Vector2(jumpThrustX, rigid.velocity.y);
+            }
+            else if(Vector2.Distance(transform.position, playerTransform.position) > acceptableDistance)
+            {
+                //rigid.AddForce(new Vector2(thrust*horizontalDirectionModifier(), 0));
+                rigid.velocity = new Vector2(thrust*horizontalDirectionModifier(), rigid.velocity.y);
+            }
         }
-        if(System.Math.Round(rigid.velocity.y,2) != 0)
+        else if (controller.HitStunLeft <=0 && System.Math.Round(rigid.velocity.y,2) == 0) // Can't act, but not in hitstun and without vertical velocity
         {
-            rigid.velocity = new Vector2(jumpThrustX, rigid.velocity.y);
-        }
-        else if(Vector2.Distance(transform.position, playerTransform.position) > acceptableDistance)
-        {
-            //rigid.AddForce(new Vector2(thrust*horizontalDirectionModifier(), 0));
-            rigid.velocity = new Vector2(thrust*horizontalDirectionModifier(), rigid.velocity.y);
+            rigid.velocity = Vector2.zero;
         }
     }
 
     
     public int horizontalDirectionModifier()
     {
-        if(!controller.canAct)
-            return 0;
-
         if(transform.position.x > playerTransform.position.x)
             return -1;
         else

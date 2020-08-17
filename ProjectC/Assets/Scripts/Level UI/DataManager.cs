@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class DataManager : MonoBehaviour
 {
@@ -33,6 +34,7 @@ public class DataManager : MonoBehaviour
         {
             hp = value;
             graphics.UpdateHP(hp,maxHP);
+            CheckDeath();
         }
     }
     private float hp;
@@ -58,6 +60,16 @@ public class DataManager : MonoBehaviour
     {
         yield return new WaitForEndOfFrame();
         HP = hp;
+    }
+
+    private void CheckDeath()
+    {
+        if(hp <= 0)
+        {
+            SceneManager.LoadScene("Title");
+            
+            Destroy(gameObject);
+        }
     }
 
 }

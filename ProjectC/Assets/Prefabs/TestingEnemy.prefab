@@ -16,9 +16,9 @@ GameObject:
   - component: {fileID: 6261995324825621418}
   - component: {fileID: 4458299277359685005}
   - component: {fileID: 3046652181903877671}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: TestingEnemy
-  m_TagString: Untagged
+  m_TagString: Enemy
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -175,6 +175,7 @@ MonoBehaviour:
   jumpDistance: 3
   jumpCooldown: 4
   jumpStun: 1.5
+  minimumJumpDistanceX: 0
 --- !u!114 &3046652181903877671
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -190,3 +191,8 @@ MonoBehaviour:
   rigid: {fileID: 0}
   cannotActTimeLeft: 0
   initialStun: 2
+  maxHp: 0
+  looksAtPlayer: 1
+  knockBackResist: 0
+  knockBackImmune: 0
+  knockBackDirection: {x: 0, y: 0}

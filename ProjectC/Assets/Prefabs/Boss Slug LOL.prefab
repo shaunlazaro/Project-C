@@ -16,9 +16,9 @@ GameObject:
   - component: {fileID: 6261995324825621418}
   - component: {fileID: 4458299277359685005}
   - component: {fileID: 3046652181903877671}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Boss Slug LOL
-  m_TagString: Untagged
+  m_TagString: Enemy
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -169,12 +169,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   acceptableDistance: 0
-  thrust: 4
-  jumpThrustXBase: 8
+  thrust: 3.5
+  jumpThrustXBase: 7
   jumpThrustY: 4
-  jumpDistance: 5
-  jumpCooldown: 4
-  jumpStun: 2
+  jumpDistance: 6
+  jumpCooldown: 3
+  jumpStun: 3
+  minimumJumpDistanceX: 2
 --- !u!114 &3046652181903877671
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -190,3 +191,8 @@ MonoBehaviour:
   rigid: {fileID: 0}
   cannotActTimeLeft: 0
   initialStun: 5
+  maxHp: 10
+  looksAtPlayer: 1
+  knockBackResist: 1
+  knockBackImmune: 1
+  knockBackDirection: {x: 1, y: 1}

@@ -6,6 +6,9 @@ using UnityEngine.Animations;
 public class PlayerController : MonoBehaviour
 {
     [SerializeField] private LayerMask platformLayerMask;
+    private int playerLayerMask;
+    private int enemyLayerMask;
+    
     private Rigidbody2D rigid;
     private Transform trans;
     private Collider2D hitbox;
@@ -65,18 +68,28 @@ public class PlayerController : MonoBehaviour
     public float bombVelocityX,bombVelocityY;
     public GameObject bombPrefab,bombDropPosition;
 
-    public float swordDamage,swordSwingStun,swordSwingDuration;
+    public float swordDamage,swordSwingSelfStun,swordSwingKnockback,swordSwingEnemyStun;
+    private float swordSwingSelfStunLeft;
     public GameObject swordSwingPrefab, swordSwingPosition;
 
     private DataManager data;
     private UnlockManager unlocks;
-    public float hitstunTime;
-    public float knockBackForce;
+    private float hitstunTime;
+    public float knockBackForce; // For getting knocked back
+    public float invulnerableTime; // Actual iframes = this+hitstun
+    private float invulnerableTimeLeft;
+    public bool Invulnerable
+    {
+        get{return invulnerableTimeLeft >0;}
+    }
     public bool facingRight;
 
     // Start is called before the first frame update
     void Start()
     {
+        playerLayerMask = LayerMask.NameToLayer("Player");
+        enemyLayerMask = LayerMask.NameToLayer("Enemy");
+
         rigid = this.GetComponent<Rigidbody2D>();
         trans = this.GetComponent<Transform>();
         hitbox = this.GetComponent<Collider2D>();
@@ -98,6 +111,9 @@ public class PlayerController : MonoBehaviour
         
         CheckBuffers();
         CheckSurroundings();
+        CheckCooldowns();
+        CheckCollision();
+
         // Reset Air Dash, Double Jump, Wall Jump
         if(isGrounded)
         {
@@ -108,9 +124,8 @@ public class PlayerController : MonoBehaviour
         }        
 
         // Movement: Only happens if player isnt in hitstun
-        if (hitstunTime > 0)
+        if (hitstunTime > 0 || swordSwingSelfStunLeft > 0)
         {
-            hitstunTime -= Time.deltaTime;
             //TODO: Hurt Frame
             //When player lands, remove the player's velocity:
             if (IsGrounded() && rigid.velocity.y <= 0.1)
@@ -118,221 +133,188 @@ public class PlayerController : MonoBehaviour
                 rigid.velocity = new Vector2(0, rigid.velocity.y);
             }
         }
-        else
+        else if (dashTimeLeft <= 0)
         {
-            if (dashTimeLeft > 0)
+            #region Movement
+            rigid.gravityScale = originalGravityScale;
+
+            // Only walking is disabled by walljumpStun.
+            if (wallJumpStunLeft <= 0)
             {
-                dashTimeLeft -= Time.deltaTime;
+                if (Input.GetAxisRaw("Horizontal") != 0)
+                {
+                    rigid.velocity = new Vector2(runSpeed * Input.GetAxisRaw("Horizontal"), rigid.velocity.y);
+                }
+                else
+                {
+                    rigid.velocity = new Vector2(0, rigid.velocity.y);
+                }
+                // Flip sprite accordingly
+                if (Input.GetAxisRaw("Horizontal") != 0)
+                {
+                    trans.localScale = new Vector3(Input.GetAxisRaw("Horizontal"), 1, 1);
+                    if (Input.GetAxisRaw("Horizontal") < 0.1)
+                        facingRight = false;
+                    else
+                        facingRight = true;
+                }
+            } // Everything past this is unaffected by walljumpstun.
+
+            // Dashing
+            if (dashBufferLeft > 0 && (airDashAllowed || isGrounded) && dashCooldownLeft <= 0 && unlocks.DashUnlocked)
+            {
+                dashCooldownLeft = dashCooldown;
+                if (!isGrounded)
+                    airDashAllowed = false;
+
+                rigid.gravityScale = 0;
+                dashTimeLeft = dashTime;
+
+                // TODO: make dashing off walls look correct.
+                if (IsTouchingWall())
+                {
+                    if (facingRight)
+                    {
+                        rigid.velocity = dashVelocityLeft;
+                    }
+                    else
+                    {
+                        rigid.velocity = dashVelocity;
+                    }
+                }
+                else
+                {
+                    if (facingRight)
+                    {
+                        rigid.velocity = dashVelocity;
+                    }
+                    else
+                    {
+                        rigid.velocity = dashVelocityLeft;
+                    }
+                }
+                jumpBufferLeft = 0;
+                coyoteBufferLeft = 0; // Prevents strange jumping allowed after dash.
+                isGrounded = false;
             }
-            /*
-            else if (wallJumpStunLeft > 0)
+            #endregion
+
+            #region Vertical Movement
+
+            // Used to enforce a minimum time before you can cut vertical velocity by releasing jump button.
+            if (!isGrounded)
             {
-                wallJumpStunLeft -= Time.deltaTime;
-                if(wallJumpStun - wallJumpStunLeft > timeBeforeGrappleWallAgain &&IsTouchingWall())
-                {
-                    //Allow another walljump earlier than other actions.
-                    if(Input.GetButtonDown("Jump") && wallJumpsUsed < numberOfWallJumpsAllowed)
-                    {
-                        wallJumpStunLeft = wallJumpStun;
-                        wallJumpsUsed++;
-                        if(!facingRight)
-                        rigid.velocity = new Vector2(wallJumpDirection.x*wallJumpForce, wallJumpDirection.y*wallJumpForce);
-                        else
-                            rigid.velocity = new Vector2(wallJumpDirection.x*-wallJumpForce, wallJumpDirection.y*wallJumpForce);
-                        facingRight = !facingRight;
-                        trans.localScale = new Vector3(trans.localScale.x*-1, trans.localScale.y, trans.localScale.z);
-                    }
-                }
-                // Minimum time passed, + not touching wall OR no wall jumps left
-                else if(wallJumpStun - wallJumpStunLeft > timeBeforeGrappleWallAgain && 
-                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed))
-                {
-                    //Allow early double jump.
-                    if(Input.GetButtonDown("Jump"))
-                    {
-                        rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
-                        doubleJumpAllowed = false;                        
-                    }
-                }
-            }*/
+                timeSinceGroundedJump += Time.deltaTime;
+            }
+            // Coyote time, part of jump check
+            if (isGrounded)
+                coyoteBufferLeft = coyoteBuffer;
             else
+                coyoteBufferLeft -= Time.deltaTime;
+
+            // If coyote buffer is still left, then the player is considered to be on the ground.
+            if (jumpBufferLeft > 0 && coyoteBufferLeft > 0)
             {
-                #region Movement
-                rigid.gravityScale = originalGravityScale;
-                
-                // Only walking is disabled by walljumpStun.
-                if(wallJumpStunLeft > 0)
-                {
-                    wallJumpStunLeft -= Time.deltaTime;
-                }
-                //Walking
+                rigid.velocity = new Vector2(rigid.velocity.x * 1.1f, jumpPower);
+                jumpBufferLeft = 0;
+                coyoteBufferLeft = 0;
+            }
+
+            // Short hop, but only when rising and only on the first hop, not the second.
+            if (releaseJumpBufferLeft > 0 && rigid.velocity.y > 0 && doubleJumpAllowed && wallJumpsUsed == 0)
+            {
+                if (timeSinceGroundedJump < minimumJumpTimeBeforeFastFallAllowed)
+                    StartCoroutine(WaitThenShortenJump(minimumJumpTimeBeforeFastFallAllowed - timeSinceGroundedJump));
                 else
-                {
-                    if (Input.GetAxisRaw("Horizontal") != 0)
-                    {
-                        rigid.velocity = new Vector2(runSpeed * Input.GetAxisRaw("Horizontal"), rigid.velocity.y);
-                    }
-                    else
-                    {
-                        rigid.velocity = new Vector2(0, rigid.velocity.y);
-                    }
-                    // Flip sprite accordingly
-                    if (Input.GetAxisRaw("Horizontal") != 0)
-                    {
-                        trans.localScale = new Vector3(Input.GetAxisRaw("Horizontal"), 1, 1);
-                        if (Input.GetAxisRaw("Horizontal") < 0.1)
-                            facingRight = false;
-                        else
-                            facingRight = true;
-                    }
-                } // Everything past this is unaffected by walljumpstun.
-                
-                // Dashing
-                if(dashCooldownLeft > 0)
-                {
-                    dashCooldownLeft -= Time.deltaTime;
-                }
-                else if (dashBufferLeft > 0 && (airDashAllowed || isGrounded) && unlocks.DashUnlocked)
-                {
-                    dashCooldownLeft = dashCooldown;
-                    if(!isGrounded)
-                        airDashAllowed = false;
-                    
-                    rigid.gravityScale = 0;
-                    dashTimeLeft = dashTime;
+                    rigid.velocity = new Vector2(rigid.velocity.x, rigid.velocity.y * 0.2f);
+            }
 
-                    // TODO: make dashing off walls look correct.
-                    if(IsTouchingWall())
-                    {
-                        if (facingRight)
-                        {
-                            rigid.velocity = dashVelocityLeft;
-                        }
-                        else
-                        {
-                            rigid.velocity = dashVelocity;
-                        }
-                    }
-                    else
-                    {
-                        if (facingRight)
-                        {
-                            rigid.velocity = dashVelocity;
-                        }
-                        else
-                        {
-                            rigid.velocity = dashVelocityLeft;
-                        }
-                    }
-                    
-                    coyoteBufferLeft = 0; // Prevents strange jumping allowed after dash.
-                    isGrounded = false;
-                }
-                #endregion
-
-                #region Vertical Movement
-                
-                // Used to enforce a minimum time before you can cut vertical velocity by releasing jump button.
-                if(!isGrounded){
-                    timeSinceGroundedJump += Time.deltaTime;
-                }
-                // Coyote time, part of jump check
-                if (isGrounded)
-                    coyoteBufferLeft = coyoteBuffer;
+            // Double Jump
+            if (jumpBufferLeft > 0 && !isGrounded && unlocks.DoubleJumpUnlocked && doubleJumpAllowed &&
+                (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed || wallCoyoteBufferLeft <= 0))
+            {
+                rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
+                doubleJumpAllowed = false;
+                jumpBufferLeft = 0;
+            }
+            // Wall Jump
+            else if (jumpBufferLeft > 0 && !isGrounded && unlocks.WallJumpUnlocked
+                && wallJumpsUsed < numberOfWallJumpsAllowed && (IsTouchingWall() || wallCoyoteBufferLeft > 0))
+            {
+                jumpBufferLeft = 0;
+                wallJumpStunLeft = wallJumpStun;
+                wallJumpsUsed++;
+                if (!facingRight)
+                    rigid.velocity = new Vector2(wallJumpDirection.x * wallJumpForce, wallJumpDirection.y * wallJumpForce);
                 else
-                    coyoteBufferLeft -= Time.deltaTime;
+                    rigid.velocity = new Vector2(wallJumpDirection.x * -wallJumpForce, wallJumpDirection.y * wallJumpForce);
+                facingRight = !facingRight;
+                trans.localScale = new Vector3(trans.localScale.x * -1, trans.localScale.y, trans.localScale.z);
+            }
 
-                // If coyote buffer is still left, then the player is considered to be on the ground.
-                if (jumpBufferLeft > 0 && coyoteBufferLeft > 0)
-                {
-                    rigid.velocity = new Vector2(rigid.velocity.x*1.1f, jumpPower);
-                    jumpBufferLeft = 0;
-                    coyoteBufferLeft = 0;
-                }
-
-                // Short hop, but only when rising and only on the first hop, not the second.
-                if (releaseJumpBufferLeft > 0 && rigid.velocity.y > 0 && doubleJumpAllowed && wallJumpsUsed == 0)
-                {
-                    if(timeSinceGroundedJump < minimumJumpTimeBeforeFastFallAllowed)
-                        StartCoroutine(WaitThenShortenJump(minimumJumpTimeBeforeFastFallAllowed - timeSinceGroundedJump));
-                    else
-                        rigid.velocity = new Vector2(rigid.velocity.x, rigid.velocity.y * 0.2f);
-                }
-
-                // Double Jump
-                if(jumpBufferLeft > 0 && !isGrounded && unlocks.DoubleJumpUnlocked && doubleJumpAllowed && 
-                    (!IsTouchingWall() || wallJumpsUsed == numberOfWallJumpsAllowed || wallCoyoteBufferLeft <= 0))
-                {
-                    rigid.velocity = new Vector2(rigid.velocity.x, doubleJumpPower);
-                    doubleJumpAllowed = false;
-                    jumpBufferLeft = 0;
-                }
-                // Wall Jump
-                else if(jumpBufferLeft > 0 && !isGrounded && unlocks.WallJumpUnlocked 
-                    && wallJumpsUsed < numberOfWallJumpsAllowed && (IsTouchingWall() || wallCoyoteBufferLeft > 0))
-                {
-                    jumpBufferLeft = 0;
-                    wallJumpStunLeft = wallJumpStun;
-                    wallJumpsUsed++;
-                    if(!facingRight)
-                        rigid.velocity = new Vector2(wallJumpDirection.x*wallJumpForce, wallJumpDirection.y*wallJumpForce);
-                    else
-                        rigid.velocity = new Vector2(wallJumpDirection.x*-wallJumpForce, wallJumpDirection.y*wallJumpForce);
-                    facingRight = !facingRight;
-                    trans.localScale = new Vector3(trans.localScale.x*-1, trans.localScale.y, trans.localScale.z);
-                }
-
-                // Always Fast Falling
-                if (rigid.velocity.y < 0 )
-                {
-                    rigid.velocity += Vector2.up * Physics2D.gravity.y * Time.deltaTime * jumpFallingBoost;
-                }
-                if(rigid.velocity.y < fallSpeedCap)
-                {
-                    rigid.velocity = new Vector2(rigid.velocity.x, fallSpeedCap);
-                }
-
-
-
-                // Limit vertical speed if clinging to wall.  Wall coyote buffer is not used for this one.
-                if(isSlidingDownWall && rigid.velocity.y < wallSlideSpeed) 
-                    rigid.velocity = new Vector2(rigid.velocity.x, wallSlideSpeed);
-                #endregion
-
-                #region Attacks
-                if (Input.GetButtonDown("Attack") && isGrounded)
-                {
-                    Debug.Log("Attack Button Pressed");
-                    if (Input.GetAxisRaw("Vertical") < -0.1f && unlocks.BombUnlocked) //Hold Down + Attack = Bomb
-                    {
-                        Debug.Log("Bomb Attack Attempted");
-                        GameObject bombDropped = Instantiate(bombPrefab, bombDropPosition.transform.position, Quaternion.identity);
-                        Physics2D.IgnoreCollision(hitbox, bombDropped.GetComponent<Collider2D>());
-                        bombDropped.GetComponent<Rigidbody2D>().velocity = new Vector2(bombVelocityX * transform.localScale.x, bombVelocityY);
-                    }
-                    else
-                    {
-                        Debug.Log("Sword Attack Attempted");
-                        GameObject swordSwing = Instantiate(swordSwingPrefab, swordSwingPosition.transform.position, Quaternion.identity);
-                        swordSwing.GetComponent<Rigidbody2D>().velocity = new Vector2 (1,0);
-                        StartCoroutine(KillSword(swordSwing));
-                    }
-                }
-                #endregion
+            // Always Fast Falling
+            if (rigid.velocity.y < 0)
+            {
+                rigid.velocity += Vector2.up * Physics2D.gravity.y * Time.deltaTime * jumpFallingBoost;
+            }
+            if (rigid.velocity.y < fallSpeedCap)
+            {
+                rigid.velocity = new Vector2(rigid.velocity.x, fallSpeedCap);
             }
 
 
+
+            // Limit vertical speed if clinging to wall.  Wall coyote buffer is not used for this one.
+            if (isSlidingDownWall && rigid.velocity.y < wallSlideSpeed)
+                rigid.velocity = new Vector2(rigid.velocity.x, wallSlideSpeed);
+            #endregion
+
+            #region Attacks
+            if (Input.GetButtonDown("Attack") && isGrounded)
+            {
+                Debug.Log("Attack Button Pressed");
+                if (Input.GetAxisRaw("Vertical") < -0.1f && unlocks.BombUnlocked) //Hold Down + Attack = Bomb
+                {
+                    Debug.Log("Bomb Attack Attempted");
+                    GameObject bombDropped = Instantiate(bombPrefab, bombDropPosition.transform.position, Quaternion.identity);
+                    Physics2D.IgnoreCollision(hitbox, bombDropped.GetComponent<Collider2D>());
+                    bombDropped.GetComponent<Rigidbody2D>().velocity = new Vector2(bombVelocityX * transform.localScale.x, bombVelocityY);
+                }
+                else
+                {
+                    Debug.Log("Sword Attack Attempted");
+                    GameObject swordSwing = Instantiate(swordSwingPrefab, swordSwingPosition.transform.position, Quaternion.identity);
+                    swordSwingSelfStunLeft = swordSwingSelfStun;
+                    if (facingRight)
+                    {
+                        swordSwing.GetComponent<Rigidbody2D>().velocity = new Vector2(1, 0);
+                    }
+                    else
+                    {
+                        swordSwing.GetComponent<Rigidbody2D>().velocity = new Vector2(-1, 0);
+                        swordSwing.transform.localScale = new Vector3
+                            (swordSwing.transform.localScale.x * -1, swordSwing.transform.localScale.y, 1);
+                    }
+                }
+            }
+            #endregion
+            
             #region Animations
             // Walking Animations
             anim.SetFloat("Walking", Mathf.Abs(Input.GetAxisRaw("Horizontal")));
+
+            // Set color to be red while in i frames :shrug:
+            if(invulnerableTimeLeft > 0)
+            {
+                playerSprite.color = Color.red;
+            }
+            else
+            {
+                playerSprite.color = Color.white;
+            }
+
             #endregion
 
-        }
-
-        IEnumerator KillSword (GameObject swordSwing)
-        {
-            yield return new WaitForSeconds(1);
-            Destroy(swordSwing);
         }
 
         #region OldCamCode
@@ -354,6 +336,7 @@ public class PlayerController : MonoBehaviour
 
     }
 
+    // Takes Input.GetButtonDown, then turns them into timed buffers.
     public void CheckBuffers()
     {
         // Attempted Jump, Stores input in buffer
@@ -372,9 +355,9 @@ public class PlayerController : MonoBehaviour
         
     }
 
+    // Handles checking wall and ground contact.
     public void CheckSurroundings()
     {
-
         // Check if grounded before anything else!
         isGrounded = (IsGrounded() && rigid.velocity.y <= 0.1);
         isSlidingDownWall = IsTouchingWall() && !isGrounded && rigid.velocity.y < 0;
@@ -384,6 +367,34 @@ public class PlayerController : MonoBehaviour
             wallCoyoteBufferLeft -= Time.deltaTime;
     }
 
+    public void CheckCooldowns()
+    {
+        //Combat:
+        if(invulnerableTimeLeft >= 0)
+            invulnerableTimeLeft -= Time.deltaTime;
+        if (swordSwingSelfStunLeft >= 0)
+            swordSwingSelfStunLeft -= Time.deltaTime;
+
+        //Movement:
+        if (hitstunTime > 0)
+            hitstunTime -= Time.deltaTime;
+        if (dashTimeLeft > 0)
+            dashTimeLeft -= Time.deltaTime;
+        if (wallJumpStun > 0)
+            wallJumpStunLeft -= Time.deltaTime;
+        if (dashCooldownLeft > 0)
+            dashCooldownLeft -= Time.deltaTime;    
+
+    }
+    
+    // Disables/Enables collision with enemies based on invulnerability status.
+    public void CheckCollision()
+    {
+        if(invulnerableTimeLeft > 0)
+            Physics2D.IgnoreLayerCollision(playerLayerMask, enemyLayerMask, true);
+        else
+            Physics2D.IgnoreLayerCollision(playerLayerMask, enemyLayerMask, false);
+    }
 
     // Used to force a minimum amount of time before short hop is activated.
     public IEnumerator WaitThenShortenJump(float timeRequired)
@@ -399,7 +410,9 @@ public class PlayerController : MonoBehaviour
         if(data.HP <= 0) Debug.Log("Dead!");
         if(isKnockedBack)
             StartCoroutine(GetKnockedBack());
-
+        invulnerableTimeLeft = invulnerableTime + hitstunTime;
+        playerSprite.color = Color.red;
+        rigid.gravityScale = originalGravityScale;
     }
     IEnumerator GetKnockedBack()
     {
@@ -421,6 +434,7 @@ public class PlayerController : MonoBehaviour
         Debug.DrawRay(hitbox.bounds.center, Vector2.down * (hitbox.bounds.extents.y+0.1f), rayColor);
         return grounded;
     }
+
 
     private bool IsTouchingWall()
     {
